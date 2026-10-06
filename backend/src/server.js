@@ -2,9 +2,17 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
-const { sequelize } = require('./models');
+// Ensure critical defaults exist even without a .env file on fresh installations
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_hp_fresh_fruits_erp_2026_ledger';
+process.env.DB_ADMIN_TOKEN = process.env.DB_ADMIN_TOKEN || '07f5d67ab4c75c5628bf0d058771c455d5fe327410bc3ac5';
+process.env.DB_DIALECT = process.env.DB_DIALECT || 'sqlite';
+process.env.DB_STORAGE = process.env.DB_STORAGE || './data/fruit_erp.sqlite';
+
+const bcrypt = require('bcryptjs');
+const { sequelize, User, Branch } = require('./models');
 const errorHandler = require('./middleware/errorHandler');
 
 // Route imports
@@ -180,6 +188,39 @@ async function startServer() {
     }
 
     console.log('[Database] Models synchronized.');
+
+    // Auto-bootstrap Owner account and default branch on fresh/cloned databases
+    try {
+      let branch = await Branch.findOne({ where: { isActive: true } });
+      if (!branch) {
+        branch = await Branch.create({
+          name: 'surat branch',
+          code: 'SUR',
+          location: 'motavarachha surat',
+          address: 'Near APMC Fruit Market, Mota Varachha, Surat',
+          phone: '1234567890',
+          isActive: true
+        });
+        console.log('[Bootstrap] Initialized default branch: surat branch (SUR)');
+      }
+
+      const owner = await User.findOne({ where: { email: 'owner@hpfruits.com' } });
+      if (!owner) {
+        const passwordHash = await bcrypt.hash('admin123', 10);
+        await User.create({
+          name: 'Harshil Patel (Managing Director)',
+          email: 'owner@hpfruits.com',
+          passwordHash,
+          role: 'OWNER',
+          branchId: branch ? branch.id : 1,
+          phone: '+91 98100 11223',
+          isActive: true
+        });
+        console.log('[Bootstrap] Initialized default Owner account: owner@hpfruits.com / admin123');
+      }
+    } catch (bootstrapErr) {
+      console.warn('[Bootstrap] Auto-bootstrap notice:', bootstrapErr.message);
+    }
 
     app.listen(PORT, () => {
       console.log(`====================================================`);
