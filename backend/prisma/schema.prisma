@@ -1,0 +1,463 @@
+// Prisma Schema Reference for PostgreSQL Deployment
+// Multi-Branch Fruit Trading ERP with Append-Only Ledger
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  OWNER
+  BRANCH_MANAGER
+  STAFF
+  ACCOUNTANT
+}
+
+enum TransactionType {
+  PURCHASE
+  SALE
+  CUSTOMER_PAYMENT
+  SUPPLIER_PAYMENT
+  AGENT_COMMISSION
+  FREIGHT_EXPENSE
+  OPERATING_EXPENSE
+  WASTAGE_LOSS
+  WEIGHT_ADJUSTMENT
+  TRANSFER_OUT
+  TRANSFER_IN
+  REVERSAL
+}
+
+enum AccountType {
+  CASH
+  BANK
+  ACCOUNTS_RECEIVABLE
+  ACCOUNTS_PAYABLE
+  SALES_REVENUE
+  COST_OF_GOODS_SOLD
+  COMMISSION_EXPENSE
+  FREIGHT_EXPENSE
+  OPERATING_EXPENSE
+  INVENTORY_ASSET
+  WASTAGE_LOSS
+  WEIGHT_LOSS
+}
+
+enum PartyType {
+  CUSTOMER
+  SUPPLIER
+  COMMISSION_AGENT
+  TRANSPORTER
+  INTERNAL
+}
+
+model Branch {
+  id          Int          @id @default(autoincrement())
+  name        String
+  code        String       @unique
+  location    String
+  address     String?
+  phone       String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  users       User[]
+  purchases   Purchase[]
+  sales       Sale[]
+  batches     StockBatch[]
+  transactions Transaction[]
+  expenses    Expense[]
+  payments    Payment[]
+  gatePasses  GatePass[]
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STAFF)
+  branchId     Int?
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  phone        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  purchases    Purchase[]
+  sales        Sale[]
+  auditLogs    AuditLog[]
+}
+
+model Item {
+  id                   Int          @id @default(autoincrement())
+  name                 String
+  variety              String?
+  category             String       @default("Fruit")
+  baseUnit             String       @default("kg")
+  packagingUnit        String?      @default("crate")
+  unitConversionFactor Decimal      @default(1.0) @db.Decimal(10, 2)
+  reorderThreshold     Decimal      @default(100.0) @db.Decimal(10, 2)
+  shelfLifeDays        Int          @default(14)
+  isActive             Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  batches              StockBatch[]
+  purchaseItems        PurchaseItem[]
+  saleItems            SaleItem[]
+  wastages             WastageEntry[]
+}
+
+// APPEND-ONLY IMMUTABLE LEDGER
+model Transaction {
+  id                    Int             @id @default(autoincrement())
+  transactionNumber     String          @unique
+  branchId              Int
+  branch                Branch          @relation(fields: [branchId], references: [id])
+  type                  TransactionType
+  referenceType         String?
+  referenceId           Int?
+  referenceNumber       String?
+  partyType             PartyType       @default(INTERNAL)
+  partyId               Int?
+  partyName             String?
+  accountType           AccountType
+  debitAmount           Decimal         @default(0.0) @db.Decimal(12, 2)
+  creditAmount          Decimal         @default(0.0) @db.Decimal(12, 2)
+  notes                 String?
+  reversedTransactionId Int?
+  isReversed            Boolean         @default(false)
+  createdBy             Int
+  createdAt             DateTime        @default(now())
+
+  @@index([branchId])
+  @@index([partyType, partyId])
+  @@index([accountType])
+  @@index([createdAt])
+}
+
+model RunningBalance {
+  id                Int       @id @default(autoincrement())
+  branchId          Int?
+  entityType        String
+  entityId          Int?
+  currentBalance    Decimal   @default(0.0) @db.Decimal(14, 2)
+  lastTransactionId Int?
+  lastUpdated       DateTime  @default(now())
+
+  @@unique([branchId, entityType, entityId])
+}
+
+model StockBatch {
+  id                Int          @id @default(autoincrement())
+  batchNumber       String       @unique
+  branchId          Int
+  branch            Branch       @relation(fields: [branchId], references: [id])
+  itemId            Int
+  item              Item         @relation(fields: [itemId], references: [id])
+  purchaseId        Int?
+  initialQuantity   Decimal      @db.Decimal(12, 2)
+  currentQuantity   Decimal      @db.Decimal(12, 2)
+  unit              String       @default("kg")
+  purchaseRate      Decimal      @db.Decimal(10, 2)
+  landedCostPerUnit Decimal      @db.Decimal(10, 2)
+  receivedDate      DateTime     @db.Date
+  expiryDate        DateTime?    @db.Date
+  status            String       @default("ACTIVE") // ACTIVE, DEPLETED, EXPIRED
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  movements         StockMovement[]
+  wastages          WastageEntry[]
+}
+
+model StockMovement {
+  id              Int         @id @default(autoincrement())
+  batchId         Int
+  batch           StockBatch  @relation(fields: [batchId], references: [id])
+  branchId        Int
+  itemId          Int
+  movementType    String
+  quantity        Decimal     @db.Decimal(12, 2)
+  unit            String      @default("kg")
+  costPerUnit     Decimal     @db.Decimal(10, 2)
+  referenceType   String?
+  referenceId     Int?
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+}
+
+model Supplier {
+  id             Int        @id @default(autoincrement())
+  name           String
+  contactPerson  String?
+  phone          String
+  email          String?
+  address        String?
+  gstNumber      String?
+  openingBalance Decimal    @default(0.0) @db.Decimal(12, 2)
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  purchases      Purchase[]
+}
+
+model Customer {
+  id             Int        @id @default(autoincrement())
+  name           String
+  contactPerson  String?
+  phone          String
+  email          String?
+  address        String?
+  gstNumber      String?
+  creditLimit    Decimal    @default(50000.0) @db.Decimal(12, 2)
+  openingBalance Decimal    @default(0.0) @db.Decimal(12, 2)
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  sales          Sale[]
+}
+
+model CommissionAgent {
+  id                    Int        @id @default(autoincrement())
+  name                  String
+  contactPerson         String?
+  phone                 String
+  defaultCommissionRate Decimal    @default(5.0) @db.Decimal(5, 2)
+  address               String?
+  isActive              Boolean    @default(true)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+}
+
+model Transporter {
+  id               Int      @id @default(autoincrement())
+  name             String
+  vehicleNumber    String
+  driverName       String?
+  driverPhone      String?
+  transportCompany String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Purchase {
+  id                       Int            @id @default(autoincrement())
+  invoiceNumber            String         @unique
+  supplierInvoiceNumber    String?
+  branchId                 Int
+  branch                   Branch         @relation(fields: [branchId], references: [id])
+  supplierId               Int
+  supplier                 Supplier       @relation(fields: [supplierId], references: [id])
+  hasAgent                 Boolean        @default(false)
+  agentId                  Int?
+  agentCommissionRate      Decimal        @default(0.0) @db.Decimal(5, 2)
+  agentCommissionAmount    Decimal        @default(0.0) @db.Decimal(10, 2)
+  transporterId            Int?
+  vehicleNumber            String?
+  freightCharges           Decimal        @default(0.0) @db.Decimal(10, 2)
+  loadingCharges           Decimal        @default(0.0) @db.Decimal(10, 2)
+  otherCharges             Decimal        @default(0.0) @db.Decimal(10, 2)
+  totalBilledWeight        Decimal        @default(0.0) @db.Decimal(12, 2)
+  totalReceivedWeight      Decimal        @default(0.0) @db.Decimal(12, 2)
+  weightVariance           Decimal        @default(0.0) @db.Decimal(12, 2)
+  weightVarianceReason     String?
+  weightVarianceLossAmount Decimal        @default(0.0) @db.Decimal(10, 2)
+  subtotal                 Decimal        @db.Decimal(12, 2)
+  discountAmount           Decimal        @default(0.0) @db.Decimal(10, 2)
+  totalAmount              Decimal        @db.Decimal(12, 2)
+  paidAmount               Decimal        @default(0.0) @db.Decimal(12, 2)
+  dueAmount                Decimal        @default(0.0) @db.Decimal(12, 2)
+  paymentStatus            String         @default("PENDING")
+  paymentMode              String         @default("CREDIT")
+  purchaseDate             DateTime       @db.Date
+  notes                    String?
+  createdBy                Int
+  user                     User           @relation(fields: [createdBy], references: [id])
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+
+  items                    PurchaseItem[]
+}
+
+model PurchaseItem {
+  id                     Int       @id @default(autoincrement())
+  purchaseId             Int
+  purchase               Purchase  @relation(fields: [purchaseId], references: [id])
+  itemId                 Int
+  item                   Item      @relation(fields: [itemId], references: [id])
+  billedQuantity         Decimal   @db.Decimal(12, 2)
+  receivedQuantity       Decimal   @db.Decimal(12, 2)
+  unit                   String    @default("crate")
+  conversionFactor       Decimal   @default(1.0) @db.Decimal(10, 2)
+  receivedWeightKg       Decimal   @db.Decimal(12, 2)
+  ratePerUnit            Decimal   @db.Decimal(10, 2)
+  discountAmount         Decimal   @default(0.0) @db.Decimal(10, 2)
+  subtotal               Decimal   @db.Decimal(12, 2)
+  allocatedFreight       Decimal   @default(0.0) @db.Decimal(10, 2)
+  allocatedCommission    Decimal   @default(0.0) @db.Decimal(10, 2)
+  allocatedOtherCharges  Decimal   @default(0.0) @db.Decimal(10, 2)
+  landedCostTotal        Decimal   @db.Decimal(12, 2)
+  landedCostPerKg        Decimal   @db.Decimal(10, 2)
+  batchId                Int?
+}
+
+model Sale {
+  id                    Int        @id @default(autoincrement())
+  invoiceNumber         String     @unique
+  branchId              Int
+  branch                Branch     @relation(fields: [branchId], references: [id])
+  customerId            Int
+  customer              Customer   @relation(fields: [customerId], references: [id])
+  hasAgent              Boolean    @default(false)
+  agentId               Int?
+  agentCommissionRate   Decimal    @default(0.0) @db.Decimal(5, 2)
+  agentCommissionAmount Decimal    @default(0.0) @db.Decimal(10, 2)
+  transporterId         Int?
+  vehicleNumber         String?
+  freightCharges        Decimal    @default(0.0) @db.Decimal(10, 2)
+  subtotal              Decimal    @db.Decimal(12, 2)
+  discountAmount        Decimal    @default(0.0) @db.Decimal(10, 2)
+  taxAmount             Decimal    @default(0.0) @db.Decimal(10, 2)
+  totalAmount           Decimal    @db.Decimal(12, 2)
+  totalCogs             Decimal    @default(0.0) @db.Decimal(12, 2)
+  grossProfit           Decimal    @default(0.0) @db.Decimal(12, 2)
+  paidAmount            Decimal    @default(0.0) @db.Decimal(12, 2)
+  dueAmount             Decimal    @default(0.0) @db.Decimal(12, 2)
+  paymentStatus         String     @default("PENDING")
+  paymentMode           String     @default("CREDIT")
+  saleDate              DateTime   @db.Date
+  notes                 String?
+  createdBy             Int
+  user                  User       @relation(fields: [createdBy], references: [id])
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  items                 SaleItem[]
+}
+
+model SaleItem {
+  id               Int      @id @default(autoincrement())
+  saleId           Int
+  sale             Sale     @relation(fields: [saleId], references: [id])
+  itemId           Int
+  item             Item     @relation(fields: [itemId], references: [id])
+  quantity         Decimal  @db.Decimal(12, 2)
+  unit             String   @default("kg")
+  conversionFactor Decimal  @default(1.0) @db.Decimal(10, 2)
+  weightKg         Decimal  @db.Decimal(12, 2)
+  ratePerUnit      Decimal  @db.Decimal(10, 2)
+  discountAmount   Decimal  @default(0.0) @db.Decimal(10, 2)
+  subtotal         Decimal  @db.Decimal(12, 2)
+  cogsAmount       Decimal  @default(0.0) @db.Decimal(12, 2)
+  profitAmount     Decimal  @default(0.0) @db.Decimal(12, 2)
+}
+
+model WastageEntry {
+  id                    Int         @id @default(autoincrement())
+  entryNumber           String      @unique
+  branchId              Int
+  itemId                Int
+  item                  Item        @relation(fields: [itemId], references: [id])
+  stockBatchId          Int
+  batch                 StockBatch  @relation(fields: [stockBatchId], references: [id])
+  quantity              Decimal     @db.Decimal(12, 2)
+  unit                  String      @default("kg")
+  quantityKg            Decimal     @db.Decimal(12, 2)
+  costPerKg             Decimal     @db.Decimal(10, 2)
+  totalLossAmount       Decimal     @db.Decimal(12, 2)
+  reason                String
+  actionTaken           String      @default("Discarded")
+  salvageRecoveryAmount Decimal     @default(0.0) @db.Decimal(10, 2)
+  entryDate             DateTime    @db.Date
+  notes                 String?
+  createdBy             Int
+  createdAt             DateTime    @default(now())
+}
+
+model Expense {
+  id            Int      @id @default(autoincrement())
+  expenseNumber String   @unique
+  branchId      Int
+  branch        Branch   @relation(fields: [branchId], references: [id])
+  category      String
+  amount        Decimal  @db.Decimal(12, 2)
+  paymentMode   String   @default("CASH")
+  paidTo        String
+  description   String?
+  receiptNo     String?
+  expenseDate   DateTime @db.Date
+  createdBy     Int
+  createdAt     DateTime @default(now())
+}
+
+model Payment {
+  id            Int      @id @default(autoincrement())
+  paymentNumber String   @unique
+  branchId      Int
+  branch        Branch   @relation(fields: [branchId], references: [id])
+  voucherType   String
+  partyType     String
+  partyId       Int
+  amount        Decimal  @db.Decimal(12, 2)
+  paymentMode   String   @default("CASH")
+  referenceType String?
+  referenceId   Int?
+  bankReference String?
+  paymentDate   DateTime @db.Date
+  notes         String?
+  createdBy     Int
+  createdAt     DateTime @default(now())
+}
+
+model GatePass {
+  id                Int       @id @default(autoincrement())
+  passNumber        String    @unique
+  branchId          Int
+  branch            Branch    @relation(fields: [branchId], references: [id])
+  passType          String
+  vehicleNumber     String
+  driverName        String?
+  driverPhone       String?
+  purpose           String
+  referenceType     String?
+  referenceId       Int?
+  referenceNumber   String?
+  timeIn            DateTime  @default(now())
+  timeOut           DateTime?
+  grossWeightKg     Decimal?  @db.Decimal(12, 2)
+  tareWeightKg      Decimal?  @db.Decimal(12, 2)
+  netFruitWeightKg  Decimal?  @db.Decimal(12, 2)
+  securityGuardName String?
+  status            String    @default("IN_PREMISES")
+  notes             String?
+  createdBy         Int
+  createdAt         DateTime  @default(now())
+}
+
+model AuditLog {
+  id              Int      @id @default(autoincrement())
+  userId          Int?
+  user            User?    @relation(fields: [userId], references: [id])
+  userName        String?
+  userRole        String?
+  branchId        Int?
+  action          String
+  entityName      String
+  entityId        Int?
+  entityReference String?
+  beforeState     String?
+  afterState      String?
+  ipAddress       String?
+  createdAt       DateTime @default(now())
+}

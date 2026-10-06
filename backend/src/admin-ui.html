@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HP Fresh Fruits ERP — Database Admin & Backup Archive</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449; --border: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8; --green: #4ade80;
+    --red: #f87171; --amber: #fbbf24; --purple: #c084fc; --pink: #f472b6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  header .meta { font-size: 12px; color: var(--muted); }
+  .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); }
+  .pill.ok { color: var(--green); border-color: #166534; }
+  .pill.bad { color: var(--red); border-color: #7f1d1d; }
+  header .spacer { flex: 1; }
+  button, select, input, textarea { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; outline: none; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: #0369a1; border-color: #0369a1; }
+  button.danger { background: #991b1b; border-color: #b91c1c; }
+  button.archive-btn { background: #831843; border-color: #be185d; color: #fbcfe8; font-weight: 500; }
+  button.archive-btn:hover { background: #9d174d; }
+  main { flex: 1; display: flex; min-height: 0; position: relative; }
+  #sidebar { width: 230px; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 8px; flex-shrink: 0; }
+  #sidebar .tbl { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  #sidebar .tbl:hover { background: var(--panel2); }
+  #sidebar .tbl.active { background: #0c4a6e; }
+  #sidebar .cnt { color: var(--muted); font-size: 11px; }
+  #content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .toolbar { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; }
+  .toolbar input[type=search] { min-width: 220px; }
+  #gridwrap { flex: 1; overflow: auto; padding: 0; }
+  table.grid { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  table.grid th, table.grid td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; white-space: nowrap; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+  table.grid th { background: var(--panel); position: sticky; top: 0; cursor: pointer; user-select: none; z-index: 2; }
+  table.grid th:hover { color: var(--accent); }
+  table.grid tr:hover td { background: #1c2a3f; }
+  td.null { color: #64748b; font-style: italic; }
+  .pager { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  
+  /* Badges */
+  .badge { font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+  .badge-sale { background: #064e3b; color: #6ee7b7; border: 1px solid #059669; }
+  .badge-purchase { background: #1e3a8a; color: #93c5fd; border: 1px solid #2563eb; }
+  .badge-customer { background: #701a75; color: #f5d0fe; border: 1px solid #a21caf; }
+  .badge-supplier { background: #713f12; color: #fde047; border: 1px solid #ca8a04; }
+  .badge-item { background: #14532d; color: #86efac; border: 1px solid #16a34a; }
+  .badge-user { background: #312e81; color: #c7d2fe; border: 1px solid #4f46e5; }
+  .badge-other { background: #374151; color: #d1d5db; border: 1px solid #4b5563; }
+
+  /* SQL console */
+  #sqlPane { position: absolute; right: 16px; bottom: 16px; width: min(760px, 60vw); height: 46vh; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; display: none; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.5); z-index: 30; }
+  #sqlPane.open { display: flex; }
+  #sqlPane .head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+  #sqlPane textarea { flex: 0 0 auto; height: 88px; margin: 8px 10px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; resize: vertical; }
+  #sqlOut { flex: 1; overflow: auto; margin: 0 10px 10px; }
+
+  /* Archive Modal View */
+  #archiveModal { position: fixed; inset: 0; background: rgba(2,6,23,.88); display: none; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+  #archiveModal.open { display: flex; }
+  #archiveCard { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: 95vw; max-width: 1200px; height: 88vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.6); }
+  #archiveHead { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  #archiveHead h2 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  #archiveToolbar { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel2); align-items: center; flex-wrap: wrap; }
+  #archiveBody { flex: 1; overflow: auto; }
+  
+  /* Snapshot Modal */
+  #snapshotModal { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center; justify-content: center; z-index: 70; padding: 20px; }
+  #snapshotModal.open { display: flex; }
+  #snapshotCard { background: #090d16; border: 1px solid var(--border); border-radius: 10px; width: 85vw; max-width: 800px; height: 75vh; display: flex; flex-direction: column; }
+  #snapshotCard pre { flex: 1; overflow: auto; padding: 14px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #a5f3fc; line-height: 1.45; }
+
+  /* Login */
+  #login { position: fixed; inset: 0; background: rgba(2,6,23,.86); display: flex; align-items: center; justify-content: center; z-index: 50; }
+  #login .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 28px; width: 380px; display: flex; flex-direction: column; gap: 10px; }
+  #login h2 { font-size: 16px; margin-bottom: 4px; }
+  #login label { font-size: 12px; color: var(--muted); }
+  #liMsg { font-size: 12px; color: var(--red); min-height: 16px; }
+  .hint { font-size: 11px; color: var(--muted); }
+  #status { font-size: 12px; color: var(--muted); padding: 4px 12px; min-height: 20px; }
+  #status.err { color: var(--red); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🗄️ DB Admin</h1>
+  <span class="pill" id="dbMeta">connecting…</span>
+  <span class="meta" id="userMeta"></span>
+  <span class="spacer"></span>
+  <button onclick="Archive.open()" class="archive-btn">🗑️ Deleted Records Archive</button>
+  <button onclick="SQL.toggle()">SQL console</button>
+  <button onclick="Auth.logout()">Logout</button>
+</header>
+
+<main>
+  <aside id="sidebar"><div class="hint" style="padding:8px">loading tables…</div></aside>
+  <section id="content">
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search all columns…" />
+      <button onclick="Table.reload()">Search</button>
+      <span class="spacer" style="flex:1"></span>
+      <span class="hint" id="tableTitle">select a table</span>
+    </div>
+    <div id="gridwrap">
+      <div class="hint" style="padding:16px">Pick a table from the sidebar, open the SQL console, or inspect the Deleted Records Archive.</div>
+    </div>
+    <div class="pager">
+      <button id="prevBtn" onclick="Table.page(-1)">‹ Prev</button>
+      <span id="pageInfo">—</span>
+      <button id="nextBtn" onclick="Table.page(1)">Next ›</button>
+      <span class="spacer" style="flex:1"></span>
+      <span class="hint">Read-only table view · SELECT / PRAGMA queries</span>
+    </div>
+    <div id="status"></div>
+  </section>
+</main>
+
+<!-- SQL Console -->
+<div id="sqlPane">
+  <div class="head">SQL console
+    <span class="spacer" style="flex:1"></span>
+    <button onclick="SQL.toggle()">✕</button>
+  </div>
+  <textarea id="sqlText" placeholder="SELECT * FROM sales ORDER BY id DESC LIMIT 20" spellcheck="false"></textarea>
+  <div style="display:flex; gap:8px; padding:0 10px 8px">
+    <button class="primary" onclick="SQL.run()">Run (Ctrl+Enter)</button>
+    <span class="hint" id="sqlStats"></span>
+  </div>
+  <div id="sqlOut"><div class="hint" style="padding:6px">Results appear here.</div></div>
+</div>
+
+<!-- Deleted Records Backup Archive Modal -->
+<div id="archiveModal">
+  <div id="archiveCard">
+    <div id="archiveHead">
+      <h2>🗑️ Deleted Records Backup Archive</h2>
+      <span class="pill ok" id="archiveCountBadge">0 records</span>
+      <span class="hint">All data deleted from the frontend is permanently backed up here until the Owner purges it.</span>
+      <span class="spacer" style="flex:1"></span>
+      <button class="danger" onclick="Archive.purgeAll()" title="Permanently delete all backup records">Purge All Archive</button>
+      <button onclick="Archive.close()">✕ Close</button>
+    </div>
+    <div id="archiveToolbar">
+      <label class="hint">Module Type:</label>
+      <select id="archiveTypeSelect" onchange="Archive.reload()">
+        <option value="ALL">All Modules</option>
+        <option value="SALE">Sales Invoices</option>
+        <option value="PURCHASE">Purchase Bills</option>
+        <option value="CUSTOMER">Customers</option>
+        <option value="SUPPLIER">Suppliers</option>
+        <option value="ITEM">Fruits & Items</option>
+        <option value="USER">User Accounts</option>
+        <option value="AGENT">Commission Agents</option>
+        <option value="TRANSPORTER">Transporters</option>
+        <option value="BRANCH">Branches</option>
+      </select>
+      <input type="search" id="archiveSearch" placeholder="Search reference, invoice no, user..." onkeydown="if(event.key==='Enter') Archive.reload()" />
+      <button class="primary" onclick="Archive.reload()">Filter</button>
+      <button onclick="Archive.reset()">Reset</button>
+      <span class="spacer" style="flex:1"></span>
+      <span class="hint" id="archiveStatus"></span>
+    </div>
+    <div id="archiveBody">
+      <table class="grid" style="width:100%">
+        <thead>
+          <tr>
+            <th style="width:60px">ID</th>
+            <th style="width:100px">Module</th>
+            <th style="width:180px">Reference / Number</th>
+            <th style="width:140px">Deleted By</th>
+            <th style="width:150px">Deleted At</th>
+            <th>Reason / Notes</th>
+            <th style="width:170px; text-align:center">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="archiveTableBody">
+          <tr><td colspan="7" class="hint" style="text-align:center; padding:20px">Loading archived records...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pager" style="padding:10px 16px">
+      <button onclick="Archive.page(-1)">‹ Prev</button>
+      <span id="archivePageInfo">Page 1 / 1</span>
+      <button onclick="Archive.page(1)">Next ›</button>
+      <span class="spacer" style="flex:1"></span>
+      <span class="hint">Owner-gated backup preservation system</span>
+    </div>
+  </div>
+</div>
+
+<!-- Snapshot Inspector Modal -->
+<div id="snapshotModal">
+  <div id="snapshotCard">
+    <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border)">
+      <h3 style="font-size:14px; color:#38bdf8" id="snapshotTitle">Deleted Record Snapshot</h3>
+      <span class="spacer" style="flex:1"></span>
+      <button onclick="Archive.copySnapshot()">📋 Copy JSON</button>
+      <button onclick="document.getElementById('snapshotModal').classList.remove('open')">✕</button>
+    </div>
+    <pre id="snapshotCode"></pre>
+  </div>
+</div>
+
+<!-- Login Modal -->
+<div id="login">
+  <div class="card">
+    <h2>HP Fresh Fruits — DB Admin & Backup</h2>
+    <label>Email</label>
+    <input id="liEmail" value="owner@hpfruits.com" />
+    <label>Password</label>
+    <input id="liPass" type="password" value="admin123" />
+    <label>DB_ADMIN_TOKEN</label>
+    <input id="liToken" value="07f5d67ab4c75c5628bf0d058771c455d5fe327410bc3ac5" />
+    <div id="liMsg"></div>
+    <button class="primary" onclick="Auth.login()">Sign in</button>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin + '/api';
+const store = {
+  get jwt() { return localStorage.getItem('dba_jwt') || ''; },
+  set jwt(v) { localStorage.setItem('dba_jwt', v); },
+  get tok() { return localStorage.getItem('dba_tok') || ''; },
+  set tok(v) { localStorage.setItem('dba_tok', v); },
+  clear() { localStorage.removeItem('dba_jwt'); localStorage.removeItem('dba_tok'); }
+};
+
+function headers() {
+  return { 'Authorization': 'Bearer ' + store.jwt, 'x-db-admin-token': store.tok };
+}
+function status(msg, isErr) {
+  const el = document.getElementById('status');
+  el.textContent = msg || '';
+  el.className = isErr ? 'err' : '';
+}
+async function api(path, options = {}) {
+  const res = await fetch(API + path, {
+    ...options,
+    headers: { ...headers(), ...(options.headers || {}) }
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 401 || res.status === 403) { Auth.show(); throw new Error(body.message || 'Not authorized'); }
+  if (!res.ok && !body.success) throw new Error(body.message || ('HTTP ' + res.status));
+  return body;
+}
+
+const Auth = {
+  show() { document.getElementById('login').style.display = 'flex'; },
+  hide() { document.getElementById('login').style.display = 'none'; },
+  async login() {
+    const email = document.getElementById('liEmail').value.trim();
+    const password = document.getElementById('liPass').value;
+    const tok = document.getElementById('liToken').value.trim();
+    const msg = document.getElementById('liMsg');
+    msg.textContent = '';
+    try {
+      const res = await fetch(API + '/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.message || 'Login failed');
+      const role = body.user?.role || body.data?.user?.role;
+      if (!['OWNER', 'ACCOUNTANT'].includes(role)) throw new Error('Owner or Accountant role required.');
+      store.jwt = body.token || body.data?.token;
+      store.tok = tok;
+      this.hide();
+      boot();
+    } catch (e) { msg.textContent = e.message; }
+  },
+  logout() { store.clear(); location.reload(); }
+};
+
+const Meta = {
+  async load() {
+    const m = await api('/db-admin/meta');
+    const el = document.getElementById('dbMeta');
+    el.textContent = `${m.dialect} · ${m.database}` + (m.storage ? ` · ${m.storage.split(/[\\/]/).pop()}` : '');
+    el.className = 'pill ok';
+  }
+};
+
+const Schema = {
+  tables: [],
+  async load() {
+    const s = await api('/db-admin/schema');
+    this.tables = s.tables;
+    const sb = document.getElementById('sidebar');
+    sb.innerHTML = '';
+    for (const t of s.tables) {
+      const div = document.createElement('div');
+      div.className = 'tbl';
+      div.innerHTML = `<span>${t.name}</span><span class="cnt">${t.rowCount}</span>`;
+      div.onclick = () => { Table.open(t.name); };
+      div.dataset.name = t.name;
+      sb.appendChild(div);
+    }
+  }
+};
+
+const Table = {
+  name: null, page: 1, sort: '', dir: 'ASC', totalPages: 1,
+  async open(name) {
+    this.name = name; this.page = 1; this.sort = ''; this.dir = 'ASC';
+    document.querySelectorAll('#sidebar .tbl').forEach(el => el.classList.toggle('active', el.dataset.name === name));
+    document.getElementById('tableTitle').textContent = name;
+    document.getElementById('search').value = '';
+    await this.reload();
+  },
+  async reload() {
+    if (!this.name) return;
+    const q = new URLSearchParams({ page: this.page, pageSize: 50 });
+    const s = document.getElementById('search').value.trim();
+    if (s) q.set('search', s);
+    if (this.sort) { q.set('sort', this.sort); q.set('dir', this.dir); }
+    try {
+      const d = await api(`/db-admin/table/${this.name}?` + q.toString());
+      this.render(d);
+      status(`${d.totalRows} rows · page ${d.page}/${d.totalPages}`);
+    } catch (e) { status(e.message, true); }
+  },
+  render(d) {
+    this.totalPages = d.totalPages;
+    const wrap = document.getElementById('gridwrap');
+    if (!d.rows.length) { wrap.innerHTML = '<div class="hint" style="padding:16px">No rows.</div>'; }
+    else {
+      const cols = Object.keys(d.rows[0]);
+      const thead = cols.map(c => `<th onclick="Table.setSort('${c}')">${c}${this.sort === c ? (this.dir === 'ASC' ? ' ▲' : ' ▼') : ''}</th>`).join('');
+      const rows = d.rows.map(r => '<tr>' + cols.map(c => {
+        const v = r[c];
+        return v === null || v === undefined ? '<td class="null">NULL</td>' : `<td title="${String(v).replace(/"/g, '&quot;')}">${String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td>`;
+      }).join('') + '</tr>').join('');
+      wrap.innerHTML = `<table class="grid"><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    document.getElementById('pageInfo').textContent = `page ${d.page} / ${d.totalPages} · ${d.totalRows} rows`;
+  },
+  setSort(col) {
+    if (this.sort === col) this.dir = this.dir === 'ASC' ? 'DESC' : 'ASC';
+    else { this.sort = col; this.dir = 'ASC'; }
+    this.reload();
+  },
+  async page(delta) {
+    const next = this.page + delta;
+    if (next < 1 || next > this.totalPages) return;
+    this.page = next;
+    await this.reload();
+  }
+};
+
+const SQL = {
+  toggle() { document.getElementById('sqlPane').classList.toggle('open'); },
+  async run() {
+    const sql = document.getElementById('sqlText').value.trim();
+    if (!sql) return;
+    try {
+      const d = await api('/db-admin/query?sql=' + encodeURIComponent(sql));
+      document.getElementById('sqlStats').textContent = `${d.rowCount} rows in ${d.durationMs}ms`;
+      const out = document.getElementById('sqlOut');
+      if (!d.rows.length) { out.innerHTML = '<div class="hint" style="padding:6px">No rows returned.</div>'; }
+      else {
+        const cols = Object.keys(d.rows[0]);
+        out.innerHTML = `<table class="grid"><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${
+          d.rows.map(r => '<tr>' + cols.map(c => {
+            const v = r[c];
+            return v === null || v === undefined ? '<td class="null">NULL</td>' : `<td>${String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td>`;
+          }).join('') + '</tr>').join('')}</tbody></table>`;
+      }
+      Schema.load().catch(() => {});
+    } catch (e) {
+      document.getElementById('sqlStats').textContent = '';
+      document.getElementById('sqlOut').innerHTML = `<div class="hint" style="padding:6px;color:var(--red)">${e.message}</div>`;
+    }
+  }
+};
+
+/* Deleted Records Backup Archive Handler */
+let currentSnapshotText = '';
+const Archive = {
+  pageNo: 1,
+  totalPages: 1,
+  records: [],
+  open() {
+    document.getElementById('archiveModal').classList.add('open');
+    this.pageNo = 1;
+    this.reload();
+  },
+  close() {
+    document.getElementById('archiveModal').classList.remove('open');
+  },
+  reset() {
+    document.getElementById('archiveTypeSelect').value = 'ALL';
+    document.getElementById('archiveSearch').value = '';
+    this.pageNo = 1;
+    this.reload();
+  },
+  async reload() {
+    const type = document.getElementById('archiveTypeSelect').value;
+    const search = document.getElementById('archiveSearch').value.trim();
+    const q = new URLSearchParams({ page: this.pageNo, pageSize: 30 });
+    if (type !== 'ALL') q.set('entityType', type);
+    if (search) q.set('search', search);
+
+    document.getElementById('archiveStatus').textContent = 'Loading...';
+    try {
+      const res = await api('/db-admin/deleted-records?' + q.toString());
+      this.records = res.records || [];
+      this.totalPages = res.totalPages || 1;
+      document.getElementById('archiveCountBadge').textContent = `${res.total || 0} records`;
+      document.getElementById('archivePageInfo').textContent = `Page ${res.page} / ${this.totalPages} (${res.total} items)`;
+      document.getElementById('archiveStatus').textContent = '';
+      this.render();
+    } catch (e) {
+      document.getElementById('archiveStatus').textContent = e.message;
+    }
+  },
+  render() {
+    const tbody = document.getElementById('archiveTableBody');
+    if (!this.records.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="hint" style="text-align:center; padding:30px">No deleted backup records found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = this.records.map(r => {
+      let badgeCls = 'badge-other';
+      if (r.entityType === 'SALE') badgeCls = 'badge-sale';
+      else if (r.entityType === 'PURCHASE') badgeCls = 'badge-purchase';
+      else if (r.entityType === 'CUSTOMER') badgeCls = 'badge-customer';
+      else if (r.entityType === 'SUPPLIER') badgeCls = 'badge-supplier';
+      else if (r.entityType === 'ITEM') badgeCls = 'badge-item';
+      else if (r.entityType === 'USER') badgeCls = 'badge-user';
+
+      const dateStr = r.deletedAt ? new Date(r.deletedAt).toLocaleString('en-IN') : '—';
+      return `
+        <tr>
+          <td>#${r.id}</td>
+          <td><span class="badge ${badgeCls}">${r.entityType}</span></td>
+          <td style="font-weight:600; color:#e2e8f0">${r.entityReference || `ID: ${r.entityId}`}</td>
+          <td>${r.deletedByName || '—'}</td>
+          <td style="font-size:11.5px; color:var(--muted)">${dateStr}</td>
+          <td style="font-size:11.5px; color:var(--muted)">${r.deletionReason || '—'}</td>
+          <td style="text-align:center">
+            <button class="primary" style="padding:3px 8px; font-size:11px" onclick="Archive.viewSnapshot(${r.id})">🔍 Snapshot</button>
+            <button class="danger" style="padding:3px 8px; font-size:11px; margin-left:4px" onclick="Archive.purgeOne(${r.id})">🗑️ Purge</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  },
+  page(delta) {
+    const next = this.pageNo + delta;
+    if (next < 1 || next > this.totalPages) return;
+    this.pageNo = next;
+    this.reload();
+  },
+  async viewSnapshot(id) {
+    try {
+      const res = await api(`/db-admin/deleted-records/${id}`);
+      const rec = res.record;
+      currentSnapshotText = JSON.stringify(rec.snapshot, null, 2);
+      document.getElementById('snapshotTitle').textContent = `Snapshot: ${rec.entityType} - ${rec.entityReference || rec.entityId}`;
+      document.getElementById('snapshotCode').textContent = currentSnapshotText;
+      document.getElementById('snapshotModal').classList.add('open');
+    } catch (e) {
+      alert('Failed to load snapshot: ' + e.message);
+    }
+  },
+  copySnapshot() {
+    if (currentSnapshotText) {
+      navigator.clipboard.writeText(currentSnapshotText);
+      alert('Snapshot JSON copied to clipboard!');
+    }
+  },
+  async purgeOne(id) {
+    if (!confirm(`Are you sure you want to PERMANENTLY purge backup record #${id}? This cannot be undone.`)) return;
+    try {
+      const res = await api(`/db-admin/deleted-records/${id}`, { method: 'DELETE' });
+      alert(res.message || 'Purged successfully');
+      this.reload();
+      Schema.load().catch(() => {});
+    } catch (e) {
+      alert('Purge failed: ' + e.message);
+    }
+  },
+  async purgeAll() {
+    const type = document.getElementById('archiveTypeSelect').value;
+    const filterTxt = type === 'ALL' ? 'ALL archived backup records' : `ALL archived ${type} records`;
+    if (!confirm(`WARNING: Are you sure you want to permanently purge ${filterTxt}? This action is irreversible.`)) return;
+    try {
+      const q = type !== 'ALL' ? `?entityType=${type}` : '';
+      const res = await api('/db-admin/deleted-records' + q, { method: 'DELETE' });
+      alert(res.message || 'Archive purged successfully');
+      this.reload();
+      Schema.load().catch(() => {});
+    } catch (e) {
+      alert('Purge failed: ' + e.message);
+    }
+  }
+};
+
+async function boot() {
+  try {
+    await Meta.load();
+    await Schema.load();
+    const um = document.getElementById('userMeta');
+    try {
+      const me = await fetch(API + '/auth/me', { headers: { 'Authorization': 'Bearer ' + store.jwt } }).then(r => r.json());
+      const u = me.user || me.data?.user;
+      if (u) um.textContent = `${u.name} · ${u.role}`;
+    } catch (e) {}
+  } catch (e) { status(e.message, true); }
+}
+
+document.getElementById('search').addEventListener('keydown', e => { if (e.key === 'Enter') Table.reload(); });
+document.getElementById('sqlText').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) SQL.run();
+});
+
+if (store.jwt && store.tok) { Auth.hide(); boot(); } else { Auth.show(); }
+</script>
+</body>
+</html>

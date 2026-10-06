@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 selection:bg-brand-500 selection:text-white;
+  }
+}
+
+/* Toast entrance animation (bottom-left) */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 0.25s ease-out;
+}
+
+/* Soft breathing glow for login background orbs */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(1.08);
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 8s ease-in-out infinite;
+}
+
+/* Slow drift for the login fruit watermark */
+@keyframes watermark-drift {
+  0%, 100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-14px, 10px);
+  }
+}
+
+.animate-watermark-drift {
+  animation: watermark-drift 40s ease-in-out infinite;
+}
+
+/* Custom Scrollbar for trading data tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print Invoice Styling — proper A4 output
+   Strategy: on screen the modal body scrolls inside the dialog. When printing,
+   the fixed-position backdrop turns static (see Modal.jsx print: classes) so the
+   invoice flows naturally across as many A4 pages as it needs. */
+@page {
+  size: A4;
+  margin: 12mm 10mm;
+}
+
+@media print {
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Collapse every fixed/transformed/blurred overlay ancestor of the invoice so
+     its absolute top:0 anchors to the top of the first printed page instead of
+     the middle of the modal — this is what caused the big blank space above. */
+  body:has(#printable-invoice) .fixed,
+  body:has(#printable-invoice) [class*="backdrop"] {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    animation: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    overflow: visible !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Kill app chrome: sidebar, navbar, everything except the open modal */
+  aside, header, nav {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #printable-invoice,
+  #printable-invoice * {
+    visibility: visible;
+  }
+  #printable-invoice {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Keep tables readable: repeat header row on every printed page */
+  #printable-invoice thead {
+    display: table-header-group;
+  }
+  #printable-invoice tr,
+  #printable-invoice img {
+    break-inside: avoid;
+  }
+
+  /* Keep the colors on the printed bill */
+  #printable-invoice * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
