@@ -284,9 +284,12 @@ const PurchaseList = () => {
         paidAmount: parseFloat(editForm.newAdvance) || 0
       };
 
+      if (isOwner && editForm.purchaseDate) {
+        payload.purchaseDate = editForm.purchaseDate;
+      }
+
       if (!editHasPayments) {
         payload.supplierId = parseInt(editForm.supplierId);
-        payload.purchaseDate = editForm.purchaseDate;
         payload.hasAgent = editForm.hasAgent;
         payload.agentId = editForm.hasAgent && editForm.agentId ? parseInt(editForm.agentId) : null;
         payload.agentCommissionRate = parseFloat(editForm.agentCommissionRate || 0);
@@ -522,13 +525,21 @@ const PurchaseList = () => {
           {/* Supplier & arrival details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Purchase Date</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-slate-700">Purchase Date</label>
+                {!isOwner && (
+                  <span className="text-[10px] text-amber-600 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                    Owner only
+                  </span>
+                )}
+              </div>
               <input
                 type="date"
                 value={editForm.purchaseDate}
-                disabled={editHasPayments}
+                disabled={!isOwner}
                 onChange={(e) => setEditForm({ ...editForm, purchaseDate: e.target.value })}
-                className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg disabled:opacity-50"
+                className={`w-full p-2 bg-slate-50 border border-slate-300 rounded-lg ${!isOwner ? 'opacity-60 cursor-not-allowed bg-slate-100' : ''}`}
+                title={!isOwner ? 'Only the owner has permission to change the purchase date' : ''}
               />
             </div>
             <div>

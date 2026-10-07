@@ -648,7 +648,17 @@ const updatePurchase = async (req, res, next) => {
       // Editable header fields only. Supplier, quantities and rates are NOT editable
       // in this mode (landed costs & FIFO batches are derived from them).
       if (supplierInvoiceNumber !== undefined) purchase.supplierInvoiceNumber = supplierInvoiceNumber;
-      if (purchaseDate) purchase.purchaseDate = purchaseDate;
+      if (purchaseDate && purchaseDate !== purchase.purchaseDate) {
+        if (req.user.role !== 'OWNER') {
+          await dbTx.rollback();
+          return res.status(403).json({ success: false, message: 'Access denied: only the owner can update the purchase date.' });
+        }
+        purchase.purchaseDate = purchaseDate;
+        const batchIds = (purchase.items || []).map(i => i.batchId).filter(Boolean);
+        if (batchIds.length > 0) {
+          await StockBatch.update({ receivedDate: purchaseDate }, { where: { id: batchIds }, transaction: dbTx });
+        }
+      }
       purchase.vehicleNumber = vehicleNumber;
       const oldTotal = parseFloat(purchase.totalAmount) || 0;
       if (freightCharges !== undefined) purchase.freightCharges = parseFloat(freightCharges) || 0;
@@ -969,7 +979,13 @@ const updatePurchase = async (req, res, next) => {
     // left intact — only bill-derived entries (payable, weight loss, commission)
     // were reversed above and are re-posted below without a payment component.
     if (paymentMode) purchase.paymentMode = paymentMode;
-    if (purchaseDate) purchase.purchaseDate = purchaseDate;
+    if (purchaseDate && purchaseDate !== purchase.purchaseDate) {
+      if (req.user.role !== 'OWNER') {
+        await dbTx.rollback();
+        return res.status(403).json({ success: false, message: 'Access denied: only the owner can update the purchase date.' });
+      }
+      purchase.purchaseDate = purchaseDate;
+    }
     if (notes !== undefined) purchase.notes = notes;
     await purchase.save({ transaction: dbTx });
 
