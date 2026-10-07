@@ -75,6 +75,16 @@ app.use('/api/reports', reportRoutes);
 app.get('/db-admin', (req, res) => res.sendFile(path.join(__dirname, 'admin-ui.html')));
 app.use('/api/db-admin', dbAdminRoutes);
 
+// Serve frontend production build when available (e.g., Hostinger / single-server deployments)
+const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/db-admin')) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
+
 // Error Handler
 app.use(errorHandler);
 
